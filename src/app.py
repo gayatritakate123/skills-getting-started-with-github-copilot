@@ -8,6 +8,7 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+import httpx
 import os
 from pathlib import Path
 
@@ -50,6 +51,33 @@ def root():
 @app.get("/activities")
 def get_activities():
     return activities
+
+
+@app.get("/countries/{country}/cities")
+def get_cities(country: str, region: str | None = None):
+    """Return cities in a country, optionally limited to a region/state."""
+    if region:
+        endpoint = "https://countriesnow.space/api/v0.1/countries/state/cities"
+        payload = {"country": country, "state": region}
+    else:
+        endpoint = "https://countriesnow.space/api/v0.1/countries/cities"
+        payload = {"country": country}
+
+    try:
+        response = httpx.post(endpoint, json=payload, timeout=10.0)
+        response.raise_for_status()
+        result = response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="City data service unavailable") from error
+
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result.get("msg", "Location not found"))
+
+    cities = result.get("data")
+    if not isinstance(cities, list) or not all(isinstance(city, str) for city in cities):
+        raise HTTPException(status_code=502, detail="Invalid response from city data service")
+
+    return {"country": country, "region": region, "cities": cities}
 
 
 @app.post("/activities/{activity_name}/signup")
